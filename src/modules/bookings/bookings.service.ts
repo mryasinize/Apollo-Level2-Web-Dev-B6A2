@@ -22,17 +22,69 @@ export const createBooking = async (payload: Record<string, unknown>) => {
 
     await pool.query(`UPDATE vehicles SET availability_status='booked' WHERE id=$1`, [vehicle_id])
 
-    return { ...data.rows[0], vehicle: { vehicle_name: vehicle.vehicle_name, daily_rent_price: vehicle.daily_rent_price } }
+    return {
+        ...data.rows[0],
+        vehicle: {
+            vehicle_name: vehicle.vehicle_name,
+            daily_rent_price: vehicle.daily_rent_price
+        }
+    }
 };
 
 export const getAllBookings = async (user: JwtPayload) => {
     let data;
     if (user.role === 'admin') {
-        data = await pool.query(`SELECT * FROM bookings`)
+        const bookings = await pool.query(`
+            SELECT 
+            bookings.*, 
+            users.name, 
+            users.email, 
+            vehicles.vehicle_name, 
+            vehicles.registration_number
+            FROM bookings
+            JOIN users ON users.id = bookings.customer_id
+            JOIN vehicles ON vehicles.id = bookings.vehicle_id
+            `)
+        data = bookings.rows.map(row => {
+            const { name, email, vehicle_name, registration_number, ...rest } = row
+            return {
+                ...rest,
+                customer: {
+                    name,
+                    email
+                },
+                vehicle: {
+                    vehicle_name,
+                    registration_number
+                }
+            }
+        })
     } else if (user.role === 'customer') {
-        data = await pool.query(`SELECT * FROM bookings WHERE customer_id=$1`, [user.id])
+        const bookings = await pool.query(`
+            SELECT 
+            bookings.*, 
+            vehicles.vehicle_name, 
+            vehicles.registration_number,
+            vehicles.type
+            FROM bookings 
+            JOIN vehicles ON vehicles.id = bookings.vehicle_id
+            WHERE customer_id=$1
+            `,
+            [user.id]
+        )
+        data = bookings.rows.map(row => {
+            const { customer_id, vehicle_name, registration_number, type, ...rest } = row
+            return {
+                ...rest,
+                vehicle: {
+                    vehicle_name,
+                    registration_number,
+                    type
+                }
+            }
+        })
     }
-    return data?.rows
+    return data
 };
 
 export const updateBooking = async (user: JwtPayload, bookingId: string, payload: Record<string, unknown>) => {
